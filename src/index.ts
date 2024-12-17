@@ -32,6 +32,10 @@ async function loadDriver() {
     options.addArguments("--use-fake-device-for-media-stream");
     options.addArguments("--use-fake-ui-for-media-stream");
 
+    options.addArguments("--window-size=1080,920");
+    options.addArguments("--auto-select-desktop-capture-source=[RECORD]");
+    options.addArguments('--enable-usermedia-screen-capturing');
+
     let driver = await new Builder().forBrowser(Browser.CHROME).setChromeOptions(options).build();
 
     
