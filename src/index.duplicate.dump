@@ -150,7 +150,8 @@ class GoogleMeetRecorder {
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-blink-features=AutomationControlled",
-                "--use-fake-ui-for-media-stream"
+                "--use-fake-ui-for-media-stream",
+                "--use-fake-device-for-media-stream"
             );
 
             this.driver = await new Builder()

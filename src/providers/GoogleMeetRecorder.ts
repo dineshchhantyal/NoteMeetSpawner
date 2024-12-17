@@ -39,7 +39,11 @@ export class GoogleMeetRecorder extends BaseMeetingRecorder {
             until.elementLocated(By.css('input[aria-label="Your name"]')), 
             15000
         );
-        await nameInput?.sendKeys('Screen Bot');
+        if (this.config.botName) {
+            await nameInput?.sendKeys(this.config.botName);
+        } else {
+            await nameInput?.sendKeys('Note Meet Bot');
+        }
         this.logger.info('Name entered successfully');
 
         // Find and click join button
@@ -143,6 +147,13 @@ export class GoogleMeetRecorder extends BaseMeetingRecorder {
             );
             await cameraMuteButton?.click();
             this.logger.info('Camera turned off');
+
+            // skip meet keeps you safe popup if exist
+            const skipButton = await this.driver?.findElement(
+                By.xpath('/html/body/div[1]/div[3]/span/div[2]/div/div/div[2]/div[2]/button')
+            );
+            await skipButton?.click();
+
         } catch (muteError) {
             this.logger.warn(`Failed to mute devices: ${muteError}`);
         }
