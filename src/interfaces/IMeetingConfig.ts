@@ -9,5 +9,6 @@ export interface IMeetingConfig {
         region: string;
         accessKeyId: string;
         secretAccessKey: string;
+        endpoint?: string;
     };
 }

@@ -20,8 +20,11 @@ export class GoogleMeetRecorder extends BaseMeetingRecorder {
             '--no-sandbox',
             '--disable-dev-shm-usage',
             '--disable-blink-features=AutomationControlled',
-            '--use-fake-ui-for-media-stream'
+            '--use-fake-ui-for-media-stream',
+            '--use-fake-device-for-media-stream',
+            // '--headless' did not work for me
         );
+
         this.driver = await new Builder()
             .forBrowser(Browser.CHROME)
             .setChromeOptions(options)
@@ -32,6 +35,18 @@ export class GoogleMeetRecorder extends BaseMeetingRecorder {
         // Navigate to meeting
         this.logger.info(`Navigating to meeting URL: ${this.config.meetingUrl}`);
         await this.driver?.get(this.config.meetingUrl);
+        
+        // if sign in button is found, click Got it
+        try {
+            const signInButton = await this.driver?.wait(
+                until.elementLocated(By.css('/html/body/div[1]/div[3]/span/div[2]/div/div/div[2]/div/button')),
+                10000
+            );
+            await signInButton?.click();
+            this.logger.info('Sign in skip button clicked');
+        } catch (error) {
+            this.logger.info('Sign in button not found, continuing...');
+        }
 
         // Wait for name input
         this.logger.info('Waiting for name input field...');
@@ -48,8 +63,10 @@ export class GoogleMeetRecorder extends BaseMeetingRecorder {
 
         // Find and click join button
         this.logger.info('Attempting to join meeting...');
-        const joinButton = await this.driver?.findElement(
-            By.xpath('/html/body/div/c-wiz/div/div/div[35]/div[4]/div/div[2]/div[4]/div/div/div[2]/div[1]/div[2]/div[1]/div/div/button')
+        const joinButton = await this.driver?.wait(
+            until.elementLocated(
+                By.xpath('/html/body/div/c-wiz/div/div/div[35]/div[4]/div/div[2]/div[4]/div/div/div[2]/div[1]/div[2]/div[1]/div/div/button')
+            ), 20000
         );
         await joinButton?.click();
         this.logger.info('Join button clicked');
@@ -182,10 +199,6 @@ export class GoogleMeetRecorder extends BaseMeetingRecorder {
         })();`;
     }
 
-
-
-
-
     async setupRecording(): Promise<void> {
         // Optional: Mute mic and camera
         try {
@@ -234,8 +247,10 @@ export class GoogleMeetRecorder extends BaseMeetingRecorder {
 
     }
 
-    private async getRecordedVideo(): Promise<string | null> {
-        return await this.driver?.executeScript('return window.recordedVideoBase64') as string | null;
+    async getRecordedVideo(): Promise<string | null> {
+        const base64 = await this.driver?.executeScript('return window.recordedVideoBase64') as string | null;
+        // Remove data prefix
+        return base64?.split(',')[1] ?? null;
     }
 
 
@@ -262,46 +277,5 @@ export class GoogleMeetRecorder extends BaseMeetingRecorder {
     }
 
 
-    async saveRecording(): Promise<void> {
-        try {
-            // Retrieve base64 encoded video
-            const base64Video = await this.getRecordedVideo();
 
-
-            if (!base64Video) {
-                this.logger.warn('No video data found after stopping the recording.');
-                return;
-            }
-
-
-            // Remove data URL prefix
-            const base64Data = base64Video.split(',')[1];
-
-            // Generate filename
-            const filename = `meet-recording-${Date.now()}.webm`;
-
-            switch (this.config.storageType) {
-                case 'local':
-                    await this.saveToLocalStorage(base64Data, filename);
-                    break;
-                case 's3':
-                    await this.saveToS3Storage(base64Data, filename);
-                    break;
-                case 'both':
-                default:
-                    await Promise.all([
-                        this.saveToLocalStorage(base64Data, filename),
-                        this.saveToS3Storage(base64Data, filename),
-                    ]);
-                    break;
-            }
-
-            await this.driver?.executeScript('window.recordedVideoBase64 = null;');
-
-        } catch (error) {
-            this.logger.error(`Video save failed: ${error}`);
-        }
-
-
-    }
 }

@@ -19,6 +19,7 @@ export abstract class BaseMeetingRecorder implements IMeetingRecorder {
         this.validateConfig(config);
         this.config = config;
         this.logger = this.setupLogger();
+        this.initializeS3Client();
         this.logger.info('Session started');
     }
 
@@ -32,7 +33,7 @@ export abstract class BaseMeetingRecorder implements IMeetingRecorder {
     protected abstract joinMeeting(): Promise<void>;
     protected abstract setupRecording(): Promise<void>;
     protected abstract stopRecording(): Promise<void>;
-    protected abstract saveRecording(): Promise<void>;
+    protected abstract getRecordedVideo(): Promise<string | null>;
 
     
     protected initializeS3Client(): void {
@@ -42,8 +43,11 @@ export abstract class BaseMeetingRecorder implements IMeetingRecorder {
                 credentials: {
                     accessKeyId: this.config.s3Config!.accessKeyId,
                     secretAccessKey: this.config.s3Config!.secretAccessKey
-                }
+                },
+                endpoint: this.config.s3Config!.endpoint,
+                forcePathStyle: true
             });
+            this.logger.info('S3 client initialized');
         }
     }
 
@@ -65,8 +69,47 @@ export abstract class BaseMeetingRecorder implements IMeetingRecorder {
         });
     };
 
+    async saveRecording(): Promise<void> {
+        try {
+            // Retrieve base64 encoded video
+            const base64Data = await this.getRecordedVideo();
+
+
+            if (!base64Data) {
+                this.logger.warn('No video data found after stopping the recording.');
+                return;
+            }
+
+            // Generate filename
+            const filename = `meet-recording-${Date.now()}.webm`;
+
+            switch (this.config.storageType) {
+                case 'local':
+                    await this.saveToLocalStorage(base64Data, filename);
+                    break;
+                case 's3':
+                    await this.saveToS3Storage(base64Data, filename);
+                    break;
+                case 'both':
+                default:
+                    await Promise.all([
+                        this.saveToLocalStorage(base64Data, filename),
+                        this.saveToS3Storage(base64Data, filename),
+                    ]);
+                    break;
+            }
+
+            await this.driver?.executeScript('window.recordedVideoBase64 = null;');
+
+        } catch (error) {
+            this.logger.error(`Video save failed: ${error}`);
+        }
+
+
+    }
+
     protected async saveToLocalStorage(base64Data: string, filename: string): Promise<void> {
-        const localPath = path.join(this.config.outputDirectory, filename);
+        const localPath = path.join(this.config.outputDirectory, 'recordings', filename);
         
         return new Promise((resolve, reject) => {
             try {
@@ -86,7 +129,8 @@ export abstract class BaseMeetingRecorder implements IMeetingRecorder {
         }
 
         const videoBuffer = Buffer.from(base64Data, 'base64');
-        const s3Key = `recordings/${filename}`;
+        const usernameGroup = this.config.outputDirectory.split(path.sep).pop();
+        const s3Key = `${usernameGroup}/recordings/${filename}`;
         const videoStream = Readable.from(videoBuffer);
 
         return new Promise((resolve, reject) => {
