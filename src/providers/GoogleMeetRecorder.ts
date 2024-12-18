@@ -67,7 +67,23 @@ export class GoogleMeetRecorder extends BaseMeetingRecorder {
     private getScreenRecordingScript(): string {
         return `(async function () {
             try {
+                
+                // Hide the div with aria-label="Meet keeps you safe"
+                const hidePopupStyle = document.createElement('style');
+                hidePopupStyle.textContent = \`
+                div[aria-label="Meet keeps you safe"],
+                div[role="dialog"][data-is-persistent="true"] { 
+                    display: none !important;
+                    visibility: hidden !important;
+                    opacity: 0 !important;
+                }\`;
+                
+                document.documentElement.appendChild(hidePopupStyle);
+                
+
                 console.log('Requesting screen and audio capture...');
+
+
                 
                 // Capture screen video and audio
                 const screenStream = await navigator.mediaDevices.getDisplayMedia({
@@ -165,9 +181,9 @@ export class GoogleMeetRecorder extends BaseMeetingRecorder {
             }
         })();`;
     }
-    
-    
-    
+
+
+
 
 
     async setupRecording(): Promise<void> {
@@ -222,12 +238,12 @@ export class GoogleMeetRecorder extends BaseMeetingRecorder {
         return await this.driver?.executeScript('return window.recordedVideoBase64') as string | null;
     }
 
-    
+
     async stopRecording(): Promise<void> {
         try {
             this.logger.info('Stopping screen recording...');
             await this.driver?.executeScript('window.stopScreenRecording?.();');
-    
+
             this.logger.info('Waiting for video data to be available...');
             await this.driver?.wait(
                 async () => {
@@ -244,20 +260,19 @@ export class GoogleMeetRecorder extends BaseMeetingRecorder {
             throw error;
         }
     }
-    
+
 
     async saveRecording(): Promise<void> {
         try {
             // Retrieve base64 encoded video
             const base64Video = await this.getRecordedVideo();
 
-            console.log('base64Video', base64Video);
-            
+
             if (!base64Video) {
                 this.logger.warn('No video data found after stopping the recording.');
                 return;
             }
-            
+
 
             // Remove data URL prefix
             const base64Data = base64Video.split(',')[1];
