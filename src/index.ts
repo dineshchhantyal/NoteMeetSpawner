@@ -2,8 +2,9 @@ import path from 'path';
 import { GoogleMeetRecorder } from './providers/GoogleMeetRecorder';
 
 async function main() {
-   
-    const meetingUrl = 'https://meet.google.com/fam-mcoy-yxa';
+
+
+    const meetingUrl = 'https://meet.google.com/yhs-ucuv-wbb';
     const usernameGroup = 'group1';
     const outputDirectory = path.join(__dirname, 'meet-recordings', usernameGroup);
 
@@ -11,6 +12,7 @@ async function main() {
         meetingUrl,
         outputDirectory,
         durationMinutes: 1,
+        storageType: 'local'
     });
 
     await recorder.recordMeeting(); 

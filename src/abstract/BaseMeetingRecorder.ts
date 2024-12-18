@@ -4,16 +4,28 @@ import { IMeetingRecorder } from '../interfaces/IMeetingRecorder';
 import { IMeetingConfig } from '../interfaces/IMeetingConfig';
 import * as path from 'path';
 import * as fs from 'fs';
+import { Readable } from 'stream';
+import { Upload } from '@aws-sdk/lib-storage';
+import { S3Client } from '@aws-sdk/client-s3';
 
 
 export abstract class BaseMeetingRecorder implements IMeetingRecorder {
     protected driver: WebDriver | null = null;
     protected logger: winston.Logger;
     protected config: IMeetingConfig;
+    private s3Client: S3Client | null = null;
 
     constructor(config: IMeetingConfig) {
+        this.validateConfig(config);
         this.config = config;
         this.logger = this.setupLogger();
+        this.logger.info('Session started');
+    }
+
+    private validateConfig(config: IMeetingConfig): void {
+        if ((config.storageType === 's3' || config.storageType === 'both') && !config.s3Config) {
+            throw new Error('S3 configuration is required when using S3 storage');
+        }
     }
 
     protected abstract initializeDriver(): Promise<void>;
@@ -21,6 +33,19 @@ export abstract class BaseMeetingRecorder implements IMeetingRecorder {
     protected abstract setupRecording(): Promise<void>;
     protected abstract stopRecording(): Promise<void>;
     protected abstract saveRecording(): Promise<void>;
+
+    
+    protected initializeS3Client(): void {
+        if (this.config.storageType === 's3' || this.config.storageType === 'both') {
+            this.s3Client = new S3Client({
+                region: this.config.s3Config!.region,
+                credentials: {
+                    accessKeyId: this.config.s3Config!.accessKeyId,
+                    secretAccessKey: this.config.s3Config!.secretAccessKey
+                }
+            });
+        }
+    }
 
     private setupLogger(): winston.Logger {
         return winston.createLogger({
@@ -39,6 +64,59 @@ export abstract class BaseMeetingRecorder implements IMeetingRecorder {
             ]
         });
     };
+
+    protected async saveToLocalStorage(base64Data: string, filename: string): Promise<void> {
+        const localPath = path.join(this.config.outputDirectory, filename);
+        
+        return new Promise((resolve, reject) => {
+            try {
+                fs.writeFileSync(localPath, base64Data, 'base64');
+                this.logger.info(`Video saved locally: ${localPath}`);
+                resolve();
+            } catch (error) {
+                this.logger.error(`Local save failed: ${error}`);
+                reject(error);
+            }
+        });
+    }
+
+    protected async saveToS3Storage(base64Data: string, filename: string): Promise<void> {
+        if (!this.s3Client) {
+            throw new Error('S3 client not initialized');
+        }
+
+        const videoBuffer = Buffer.from(base64Data, 'base64');
+        const s3Key = `recordings/${filename}`;
+        const videoStream = Readable.from(videoBuffer);
+
+        return new Promise((resolve, reject) => {
+            const upload = new Upload({
+                client: this.s3Client!,
+                params: {
+                    Bucket: this.config.s3Config!.bucket,
+                    Key: s3Key,
+                    Body: videoStream,
+                    ContentType: 'video/webm'
+                }
+            });
+
+            // Track upload progress
+            upload.on('httpUploadProgress', (progress) => {
+                this.logger.info(`S3 Upload progress: ${progress.loaded} / ${progress.total} bytes`);
+            });
+
+            upload.done()
+                .then(() => {
+                    this.logger.info(`Video uploaded to S3: s3://${this.config.s3Config!.bucket}/${s3Key}`);
+                    resolve();
+                })
+                .catch((error: any) => {
+                    this.logger.error(`S3 upload failed: ${error}`);
+                    reject(error);
+                });
+        });
+    }
+    
     public async recordMeeting(): Promise<void> {
         try {
             await this.initializeDriver();
@@ -48,7 +126,14 @@ export abstract class BaseMeetingRecorder implements IMeetingRecorder {
             await new Promise(resolve => setTimeout(resolve, this.config.durationMinutes * 60 * 1000));
 
             await this.stopRecording();
+
+            this.logger.info('Recording complete');
+
             await this.saveRecording();
+
+            this.logger.info('Recording saved to storage: ' + this.config.storageType);
+
+
         } catch (error) {
             // Take screenshot on failure
             try {
@@ -60,6 +145,7 @@ export abstract class BaseMeetingRecorder implements IMeetingRecorder {
                     );
                     fs.writeFileSync(screenshotPath, screenshot, 'base64');
                     this.logger.info(`Error screenshot saved to: ${screenshotPath}`);
+                    this.logger.error(`Recording failed: ${error}`);
                 }
             } catch (screenshotError) {
                 this.logger.error(`Failed to save error screenshot: ${screenshotError}`);
