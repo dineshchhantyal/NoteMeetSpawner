@@ -105,7 +105,6 @@ export abstract class BaseMeetingRecorder implements IMeetingRecorder {
             this.logger.error(`Video save failed: ${error}`);
         }
 
-
     }
 
     protected async saveToLocalStorage(base64Data: string, filename: string): Promise<void> {

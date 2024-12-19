@@ -22,7 +22,7 @@ export class GoogleMeetRecorder extends BaseMeetingRecorder {
             '--disable-blink-features=AutomationControlled',
             '--use-fake-ui-for-media-stream',
             '--use-fake-device-for-media-stream',
-            // '--headless' did not work for me
+            // '--headless' // did not work for me
         );
 
         this.driver = await new Builder()

@@ -6,9 +6,8 @@ dotenv.config();
 
 async function main() {
 
-
-
-    const meetingUrl = 'https://meet.google.com/xyu-vvtp-gts';
+    
+    const meetingUrl = 'https://meet.google.com/ari-ppos-jam';
     const usernameGroup = 'group1';
     const outputDirectory = path.join(__dirname, 'meet-recordings', usernameGroup);
 
