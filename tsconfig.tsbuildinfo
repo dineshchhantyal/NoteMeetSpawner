@@ -1,1 +1,1 @@
-{"root":["./src/index.ts","./src/abstract/basemeetingrecorder.ts","./src/interfaces/imeetingconfig.ts","./src/interfaces/imeetingrecorder.ts","./src/providers/googlemeetrecorder.ts"],"version":"5.7.2"}
+{"root":["./src/index.ts","./src/lambda.ts","./src/abstract/basemeetingrecorder.ts","./src/interfaces/imeetingconfig.ts","./src/interfaces/imeetingrecorder.ts","./src/providers/googlemeetrecorder.ts"],"version":"5.7.2"}
