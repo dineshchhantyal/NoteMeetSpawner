@@ -115,25 +115,68 @@ export abstract class BaseMeetingRecorder implements IMeetingRecorder {
     base64Data: string,
     filename: string
   ): Promise<void> {
-    if (!fs.existsSync(path.join(this.config.outputDirectory, "recordings"))) {
-      fs.mkdirSync(path.join(this.config.outputDirectory, "recordings"));
-    }
-    const localPath = path.join(
-      this.config.outputDirectory,
-      "recordings",
-      filename
-    );
-
-    return new Promise((resolve, reject) => {
-      try {
-        fs.writeFileSync(localPath, base64Data, "base64");
-        this.logger.info(`Video saved locally: ${localPath}`);
-        resolve();
-      } catch (error) {
-        this.logger.error(`Local save failed: ${error}`);
-        reject(error);
+    try {
+      if (
+        !fs.existsSync(path.join(this.config.outputDirectory, "recordings"))
+      ) {
+        fs.mkdirSync(path.join(this.config.outputDirectory, "recordings"), {
+          recursive: true,
+        });
       }
-    });
+
+      const localPath = path.join(
+        this.config.outputDirectory,
+        "recordings",
+        filename
+      );
+
+      // Simple and direct conversion from base64 to binary
+      const buffer = Buffer.from(base64Data, "base64");
+
+      // Write the buffer to file in one operation
+      fs.writeFileSync(localPath, buffer);
+
+      // Log the saved file details
+      const stats = fs.statSync(localPath);
+      this.logger.info(
+        `Video saved locally: ${localPath} (${stats.size} bytes)`
+      );
+    } catch (error) {
+      this.logger.error(`Local save failed: ${error}`);
+      throw error;
+    }
+  }
+
+  // Add this helper method to verify WebM files
+  private verifyWebMFile(filePath: string): boolean {
+    try {
+      // Read the first 8 bytes of the file to check WebM signature
+      const headerBuffer = Buffer.alloc(8);
+      const fd = fs.openSync(filePath, "r");
+      fs.readSync(fd, headerBuffer, 0, 8, 0);
+      fs.closeSync(fd);
+
+      // WebM files should start with 0x1A 0x45 0xDF 0xA3 (EBML header)
+      const isValidWebM =
+        headerBuffer[0] === 0x1a &&
+        headerBuffer[1] === 0x45 &&
+        headerBuffer[2] === 0xdf &&
+        headerBuffer[3] === 0xa3;
+
+      if (!isValidWebM) {
+        this.logger.error(
+          `File does not have a valid WebM header: ${filePath}`
+        );
+        this.logger.error(`Header bytes: ${headerBuffer.toString("hex")}`);
+        return false;
+      }
+
+      this.logger.info(`WebM file has valid header signature: ${filePath}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`Error verifying WebM file: ${error}`);
+      return false;
+    }
   }
 
   protected async saveToS3Storage(
@@ -263,5 +306,57 @@ export abstract class BaseMeetingRecorder implements IMeetingRecorder {
   public async cleanup(): Promise<void> {
     await this.driver?.quit();
     this.logger.info("Session ended");
+  }
+
+  // Add this debug method to check saved files
+
+  protected checkVideoFile(filePath: string): boolean {
+    try {
+      // Check if file exists and has content
+      const fs = require("fs");
+      if (!fs.existsSync(filePath)) {
+        this.logger.error(`File does not exist: ${filePath}`);
+        return false;
+      }
+
+      // Get file stats
+      const stats = fs.statSync(filePath);
+
+      if (stats.size === 0) {
+        this.logger.error(`File is empty: ${filePath}`);
+        return false;
+      }
+
+      // Check WebM file signature
+      // WebM files start with 0x1A 0x45 0xDF 0xA3 (EBML header)
+      const buffer = Buffer.alloc(4);
+      const fd = fs.openSync(filePath, "r");
+      fs.readSync(fd, buffer, 0, 4, 0);
+      fs.closeSync(fd);
+
+      // Check WebM signature
+      const isValidSignature =
+        buffer[0] === 0x1a &&
+        buffer[1] === 0x45 &&
+        buffer[2] === 0xdf &&
+        buffer[3] === 0xa3;
+
+      this.logger.info(
+        `File ${filePath} exists with size ${stats.size} bytes, valid WebM signature: ${isValidSignature}`
+      );
+
+      if (!isValidSignature) {
+        this.logger.warn(
+          `File does not have a valid WebM signature! First bytes: ${buffer.toString(
+            "hex"
+          )}`
+        );
+      }
+
+      return isValidSignature;
+    } catch (error) {
+      this.logger.error(`Error checking file: ${error}`);
+      return false;
+    }
   }
 }
